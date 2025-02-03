@@ -1,5 +1,6 @@
 [build]
-  command = "npm run build || exit 0"
+  base = "frontend"
+  command = "npm install && npm run build"
   publish = ".next"
 
 [build.environment]
