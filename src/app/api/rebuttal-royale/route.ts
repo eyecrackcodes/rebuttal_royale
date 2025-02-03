@@ -204,7 +204,7 @@ export async function POST(req: Request) {
   } catch (error: unknown) {
     console.error("Rebuttal Royale error:", error);
     return NextResponse.json(
-      { error: "Failed to process rebuttal" },
+      { error: error instanceof Error ? error.message : "Failed to process rebuttal" },
       { status: 500 }
     );
   }

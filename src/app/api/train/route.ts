@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-export async function POST(_req: Request) {
+export async function POST() {
   try {
     // Analyze transcript for:
     // - Successful objection handling

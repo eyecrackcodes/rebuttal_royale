@@ -4,7 +4,15 @@ const openai = new OpenAI({
   apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY,
 });
 
-export async function generateResponse(context: string, conversation: any[]) {
+interface ChatMessage {
+  role: string;
+  content: string;
+}
+
+export async function generateResponse(
+  context: string,
+  conversation: ChatMessage[]
+) {
   try {
     const completion = await openai.chat.completions.create({
       model: "gpt-4-turbo-preview",
@@ -48,6 +56,3 @@ export async function generateVoice(text: string, voice_id: string) {
 
   return response.blob();
 }
-
-// Add proper type for the callback
-type SpeechCallback = (text: string) => Promise<void>;
