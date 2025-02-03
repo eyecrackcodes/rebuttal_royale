@@ -7,19 +7,34 @@ console.log("Environment check:", {
   envKeys: Object.keys(process.env),
 });
 
-export const config = {
-  openai: {
-    apiKey: process.env.OPENAI_API_KEY,
-    baseUrl: process.env.OPENAI_API_BASE_URL || 'https://api.openai.com/v1'
-  },
+interface Config {
   anthropic: {
-    apiKey: process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY,
-    baseUrl: process.env.ANTHROPIC_API_BASE_URL || 'https://api.anthropic.com'
+    apiKey: string;
+    baseUrl: string;
+  };
+  elevenlabs: {
+    apiKey: string;
+    baseUrl: string;
+  };
+  openai: {
+    apiKey: string;
+    baseUrl: string;
+  };
+}
+
+export const config: Config = {
+  anthropic: {
+    apiKey: process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY || '',
+    baseUrl: process.env.ANTHROPIC_API_BASE_URL || 'https://api.anthropic.com',
   },
   elevenlabs: {
-    apiKey: process.env.NEXT_PUBLIC_ELEVENLABS_API_KEY,
-    baseUrl: process.env.ELEVENLABS_API_BASE_URL || 'https://api.elevenlabs.io/v1'
-  }
+    apiKey: process.env.NEXT_PUBLIC_ELEVENLABS_API_KEY || '',
+    baseUrl: process.env.ELEVENLABS_API_BASE_URL || 'https://api.elevenlabs.io',
+  },
+  openai: {
+    apiKey: process.env.OPENAI_API_KEY || '',
+    baseUrl: process.env.OPENAI_API_BASE_URL || 'https://api.openai.com',
+  },
 };
 
 // Add debugging
@@ -42,6 +57,4 @@ if (isServer) {
       throw new Error(`Missing required environment variable: ${envVar}`);
     }
   }
-}
-
-export { config }; 
+} 
