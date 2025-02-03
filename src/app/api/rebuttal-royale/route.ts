@@ -75,6 +75,20 @@ interface AIResponse {
   intensity: number; // 0-1 scale
 }
 
+// Add proper type for trainingConfig
+interface ObjectionHandling {
+  approvedPhrases: string[];
+  forbiddenPhrases: string[];
+  requiredPoints: string[];
+  sampleRebuttals: string[];
+}
+
+interface TrainingConfig {
+  objectionHandling: {
+    [key in keyof typeof OBJECTIONS]: ObjectionHandling;
+  };
+}
+
 export async function POST(req: Request) {
   try {
     const { level, currentScore, lastResponse } = await req.json();
@@ -90,9 +104,9 @@ export async function POST(req: Request) {
       Math.floor(Math.random() * objectionData.scenarios.length)
     ];
 
-    // Analyze agent's rebuttal effectiveness
+    // Update the analyzeRebuttal function
     const analyzeRebuttal = (response: string, objectionType: keyof typeof OBJECTIONS) => {
-      const guidelines = trainingConfig.objectionHandling[objectionType];
+      const guidelines = trainingConfig.objectionHandling[objectionType] as ObjectionHandling;
       let effectiveness = 0;
 
       // Check for approved phrases
