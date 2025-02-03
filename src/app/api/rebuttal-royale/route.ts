@@ -2,8 +2,18 @@ import { NextResponse } from "next/server";
 import { config } from "@/lib/config";
 import { trainingConfig } from "@/config/training-config";
 
-// Define objection categories and specific scenarios
-const OBJECTIONS = {
+interface Objection {
+  level: number;
+  scenarios: string[];
+  points: number;
+  tips: string;
+}
+
+type ObjectionType = {
+  [key: string]: Objection;
+}
+
+const OBJECTIONS: ObjectionType = {
   PRICE: {
     level: 1,
     scenarios: [
@@ -69,16 +79,13 @@ export async function POST(req: Request) {
   try {
     const { level, currentScore, lastResponse } = await req.json();
 
-    // Select objection based on level
     const availableObjections = Object.entries(OBJECTIONS)
       .filter(([, obj]) => obj.level <= level);
     
-    const randomObjection = availableObjections[
+    const [objectionType, objectionData] = availableObjections[
       Math.floor(Math.random() * availableObjections.length)
-    ][0];
+    ];
 
-    const objectionType = randomObjection[0];
-    const objectionData = randomObjection[1];
     const scenario = objectionData.scenarios[
       Math.floor(Math.random() * objectionData.scenarios.length)
     ];
