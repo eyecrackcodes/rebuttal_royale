@@ -96,3 +96,6 @@ export const speakText = async (
     throw error;
   }
 };
+
+// Export SpeechRecognition for use in other files
+export type { SpeechRecognition };

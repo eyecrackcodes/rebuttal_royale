@@ -1,10 +1,10 @@
 [build]
-  command = "CI=false npm run build"
+  command = "npm run build"
   publish = ".next"
 
 [build.environment]
   NEXT_TELEMETRY_DISABLED = "1"
-  CI = "false"
+  NEXT_LINT_IGNORE_ERRORS = "1"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"

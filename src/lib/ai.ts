@@ -48,3 +48,6 @@ export async function generateVoice(text: string, voice_id: string) {
 
   return response.blob();
 }
+
+// Add proper type for the callback
+type SpeechCallback = (text: string) => Promise<void>;
