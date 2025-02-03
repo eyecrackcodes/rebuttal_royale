@@ -12,6 +12,10 @@ interface SpeechRecognitionEvent extends Event {
   };
 }
 
+// @ts-expect-error - Web Speech API types not fully supported
+const SpeechRecognition =
+  window.SpeechRecognition || window.webkitSpeechRecognition;
+
 export const startListening = (
   onResult: (text: string) => void,
   onError: (error: string) => void

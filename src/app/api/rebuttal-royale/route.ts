@@ -75,7 +75,7 @@ export async function POST(req: Request) {
     
     const randomObjection = availableObjections[
       Math.floor(Math.random() * availableObjections.length)
-    ];
+    ][0];
 
     const objectionType = randomObjection[0];
     const objectionData = randomObjection[1];
@@ -201,7 +201,7 @@ export async function POST(req: Request) {
       }
     });
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Rebuttal Royale error:", error);
     return NextResponse.json(
       { error: "Failed to process rebuttal" },

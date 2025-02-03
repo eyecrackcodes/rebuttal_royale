@@ -18,7 +18,7 @@ export default function InteractiveSession() {
   const [isCallActive, setIsCallActive] = useState(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const [isExpanded, setIsExpanded] = useState(false);
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Number of messages to show in collapsed view

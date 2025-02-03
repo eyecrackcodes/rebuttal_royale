@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Trophy, Star, Shield, Target, Mic, Volume2, VolumeX } from "lucide-react";
 import { startListening, speakText } from "@/lib/speechUtils";
