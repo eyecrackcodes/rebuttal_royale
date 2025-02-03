@@ -71,7 +71,7 @@ export async function POST(req: Request) {
 
     // Select objection based on level
     const availableObjections = Object.entries(OBJECTIONS)
-      .filter(([_, obj]) => obj.level <= level);
+      .filter(([, obj]) => obj.level <= level);
     
     const randomObjection = availableObjections[
       Math.floor(Math.random() * availableObjections.length)
