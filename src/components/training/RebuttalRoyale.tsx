@@ -1,17 +1,24 @@
 "use client";
-import { useState } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Trophy, Star, Shield, Target, Mic, Volume2, VolumeX } from "lucide-react";
 import { startListening, speakText } from "@/lib/speechUtils";
 import { config } from "@/lib/config";
 import { trainingConfig } from "@/config/training-config";
 import { Tutorial } from "@/components/training/Tutorial";
+import { voiceConfig } from "@/config/voice-config";
+import { Level } from "@/config/levels";
+import { ProgressBar } from "@/components/training/ProgressBar";
+import { LevelComplete } from "@/components/training/LevelComplete";
+import { LevelSummary } from "@/components/training/LevelSummary";
+import { ObjectionType } from '@/config/objections';
+import { cleanTextForSpeech } from "@/lib/textUtils";
 
 interface GameState {
   isActive: boolean;
   currentObjection: string;
   objectionType: string;
-  level: number;
+  level: Level;
   score: number;
   streak: number;
   feedback: string;
@@ -22,6 +29,21 @@ interface GameState {
   }>;
   emotion: string;
   emotionIntensity: number;
+  tips: string;
+  badges: {
+    pricemaster: boolean;
+    trustbuilder: boolean;
+    closingchamp: boolean;
+  };
+  objectionsCompleted: number;
+  levelStats: {
+    totalResponses: number;
+    averageScore: number;
+    bestResponse: string;
+    areasToImprove: string[];
+    usedPhrases: string[];
+    missedOpportunities: string[];
+  };
 }
 
 export default function RebuttalRoyale() {
@@ -29,181 +51,355 @@ export default function RebuttalRoyale() {
     isActive: false,
     currentObjection: "",
     objectionType: "",
-    level: 1,
+    level: {} as Level,
     score: 0,
     streak: 0,
     feedback: "",
     history: [],
     emotion: "",
-    emotionIntensity: 0.5,
+    emotionIntensity: 0.3,
+    tips: "",
+    badges: {
+      pricemaster: false,
+      trustbuilder: false,
+      closingchamp: false
+    },
+    objectionsCompleted: 0,
+    levelStats: {
+      totalResponses: 0,
+      averageScore: 0,
+      bestResponse: '',
+      areasToImprove: [],
+      usedPhrases: [],
+      missedOpportunities: []
+    },
   });
 
   const [isListening, setIsListening] = useState(false);
+  const [autoListen, setAutoListen] = useState(true);
   const [isSpeaking, setIsSpeaking] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
-  const [badges, setBadges] = useState({
-    pricemaster: false,
-    trustbuilder: false,
-    closingchamp: false,
-  });
+  const [showLevelComplete, setShowLevelComplete] = useState(false);
+  const [showSummary, setShowSummary] = useState(false);
+  const [newBadges, setNewBadges] = useState<string[]>([]);
+  const recognitionRef = useRef<any>(null);
+  const findUsedPhrases = useCallback((response: string, currentObjType: ObjectionType): string[] => {
+    const training = trainingConfig.objectionHandling[currentObjType];
+    if (!training) return [];
+    
+    return training.approvedPhrases.filter(phrase => 
+      response.toLowerCase().includes(phrase.toLowerCase())
+    );
+  }, []);
+
+  const findMissedOpportunities = useCallback((response: string, currentObjType: ObjectionType): string[] => {
+    const training = trainingConfig.objectionHandling[currentObjType];
+    if (!training) return [];
+    
+    return Object.keys(training.keyPhrases).filter(phrase => 
+      !response.toLowerCase().includes(phrase.toLowerCase())
+    );
+  }, []);
 
   const startGame = async () => {
     setIsLoading(true);
     try {
+      console.log('Starting game with score:', gameState.score);
+      
       const response = await fetch("/api/rebuttal-royale", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          // Add any other necessary headers
+        },
         body: JSON.stringify({
-          level: gameState.level,
-          currentScore: gameState.score,
-        }),
+          currentScore: gameState.score
+        })
       });
 
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to start game');
+      }
+
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
+      console.log('Game start response:', data);
+
+      if (!data.success) throw new Error(data.message);
 
       setGameState(prev => ({
         ...prev,
         isActive: true,
         currentObjection: data.content,
         objectionType: data.objectionType,
+        level: data.level,
         emotion: data.emotion,
         emotionIntensity: data.intensity,
+        tips: data.tips,
+        badges: data.badges,
+        objectionsCompleted: 0,
+        levelStats: {
+          totalResponses: 0,
+          averageScore: 0,
+          bestResponse: '',
+          areasToImprove: [],
+          usedPhrases: [],
+          missedOpportunities: []
+        }
       }));
 
+      // Speak the objection if audio is enabled
       if (isSpeaking) {
-        await handleSpeech(data.content, data.emotion, data.intensity);
+        try {
+          const voice = voiceConfig.getRandomVoice();
+          await speakText(
+            cleanTextForSpeech(data.content),
+            process.env.NEXT_PUBLIC_ELEVENLABS_API_KEY || '',
+            voice.id,
+            voice.settings
+          );
+        } catch (error) {
+          console.error('Speech synthesis error:', error);
+        }
       }
     } catch (error) {
       console.error("Game start error:", error);
+      // Show error to user
+      // You might want to add a toast or error message component
     } finally {
       setIsLoading(false);
     }
   };
 
+  // Add a constant for required objections
+  const OBJECTIONS_PER_LEVEL = 3;
+  const PASSING_SCORE_PER_LEVEL = 200; // Adjust this value as needed
+
+  // Update handleResponse function
   const handleResponse = async (response: string) => {
-    setIsLoading(true);
     try {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+        setIsListening(false);
+      }
+
       const result = await fetch("/api/rebuttal-royale", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          level: gameState.level,
-          currentScore: gameState.score,
-          lastResponse: response,
-        }),
+          currentScore: gameState.score || 0,
+          response,
+          objectionType: gameState.objectionType,
+          objectionsCompleted: gameState.objectionsCompleted || 0
+        })
       });
 
       const data = await result.json();
-      if (!result.ok) throw new Error(data.error);
+      if (!data.success) throw new Error(data.message);
 
-      setGameState(prev => ({
-        ...prev,
-        score: data.score,
-        feedback: data.feedback,
-        currentObjection: data.content,
-        objectionType: data.objectionType,
-        streak: data.score > prev.score ? prev.streak + 1 : 0,
-        history: [...prev.history, {
-          objection: prev.currentObjection,
-          response,
-          points: data.score - prev.score,
-        }],
-        emotion: data.emotion,
-        emotionIntensity: data.intensity,
-      }));
-
-      setBadges(data.badges);
-
-      if (data.score > gameState.score && gameState.streak >= 2) {
-        // Level up after 3 successful responses
-        setGameState(prev => ({
+      // Use a callback to ensure we have the latest state
+      setGameState(prev => {
+        const newObjectionsCompleted = prev.objectionsCompleted + 1;
+        const newScore = prev.score + (data.points || 0);
+        
+        return {
           ...prev,
-          level: Math.min(prev.level + 1, 5),
-        }));
+          score: newScore,
+          objectionsCompleted: newObjectionsCompleted,
+          feedback: data.feedback,
+          history: [...prev.history, {
+            objection: prev.currentObjection,
+            response,
+            points: data.points || 0
+          }],
+          levelStats: {
+            ...prev.levelStats,
+            totalResponses: prev.levelStats.totalResponses + 1,
+            averageScore: (prev.levelStats.averageScore * prev.levelStats.totalResponses + (data.points || 0)) / (prev.levelStats.totalResponses + 1),
+            usedPhrases: [...prev.levelStats.usedPhrases, ...findUsedPhrases(response, prev.objectionType as ObjectionType)],
+            missedOpportunities: data.points > 0 ? prev.levelStats.missedOpportunities : [...prev.levelStats.missedOpportunities, ...findMissedOpportunities(response, prev.objectionType as ObjectionType)]
+          }
+        };
+      });
+
+      // Wait for state to update before checking completion
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      if (data.levelComplete) {
+        if (data.passedLevel) {
+          setShowSummary(true);
+        } else {
+          handleLevelFailed();
+        }
+      } else {
+        await getNextObjection();
       }
 
-      if (isSpeaking) {
-        await handleSpeech(data.content, data.emotion, data.intensity);
-      }
     } catch (error) {
       console.error("Response error:", error);
-    } finally {
-      setIsLoading(false);
     }
   };
 
-  const handleSpeech = async (text: string, emotion: string, intensity: number) => {
-    if (!config.elevenlabs.apiKey) return;
-    try {
-      const cleanText = text
-        .replace(/Customer:/g, '')
-        .replace(/\*([^*]+)\*/g, '')
-        .replace(/\([^)]+\)/g, '')
-        .replace(/\[[^\]]+\]/g, '')
-        .replace(/[.,!?;](?=\s|$)/g, match => `${match} `)
-        .trim();
-
-      const voiceProfile = Math.random() > 0.5 
-        ? trainingConfig.voiceProfiles.elderlyMale 
-        : trainingConfig.voiceProfiles.elderlyFemale;
-
-      // Map emotions to voice settings
-      const emotionSettings = {
-        frustrated: { stability: 0.3, similarity_boost: 0.8, style: 0.8 },
-        concerned: { stability: 0.6, similarity_boost: 0.7, style: 0.6 },
-        skeptical: { stability: 0.5, similarity_boost: 0.6, style: 0.7 },
-        interested: { stability: 0.8, similarity_boost: 0.6, style: 0.4 },
-        resistant: { stability: 0.4, similarity_boost: 0.8, style: 0.8 },
-      };
-
-      const emotionalSSML = `
-        <speak>
-          <prosody rate="${85 + (intensity * 10)}%" pitch="${-2 + (intensity * 2)}%">
-            ${emotion === 'frustrated' || emotion === 'resistant' ? '<emphasis level="strong">' : ''}
-            ${cleanText}
-            ${emotion === 'frustrated' || emotion === 'resistant' ? '</emphasis>' : ''}
-          </prosody>
-        </speak>
-      `;
-
-      await speakText(
-        emotionalSSML,
-        config.elevenlabs.apiKey,
-        voiceProfile.voiceId,
-        {
-          ...voiceProfile.settings,
-          ...emotionSettings[emotion as keyof typeof emotionSettings],
-          speaking_rate: 0.85 + (intensity * 0.15),
-          speaking_pause: 0.5 - (intensity * 0.2),
-        }
-      );
-    } catch (error) {
-      console.error("Speech error:", error);
-    }
+  // Add level failed handler
+  const handleLevelFailed = () => {
+    setGameState(prev => ({
+      ...prev,
+      isActive: false,
+      feedback: "You need more practice with these objections. Try again!",
+      objectionsCompleted: 0,
+      levelStats: {
+        totalResponses: 0,
+        averageScore: 0,
+        bestResponse: '',
+        areasToImprove: [],
+        usedPhrases: [],
+        missedOpportunities: []
+      }
+    }));
   };
 
-  const toggleListening = () => {
-    if (isListening) {
-      window.speechRecognition?.stop();
-      setIsListening(false);
-      return;
+  const startListeningForResponse = useCallback(() => {
+    if (!autoListen) return;
+    
+    setTimeout(() => {
+      if (!isListening) {
+        startMicrophoneListening();
+      }
+    }, 1000);
+  }, [autoListen, isListening]);
+
+  const startMicrophoneListening = useCallback(() => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
     }
 
     const recognition = startListening(
-      async (text) => {
+      (text) => {
+        handleResponse(text);
         setIsListening(false);
-        await handleResponse(text);
+        recognitionRef.current = null;
       },
       (error) => {
-        console.error(error);
+        console.error('Speech recognition error:', error);
+        setGameState(prev => ({
+          ...prev,
+          feedback: typeof error === 'string' ? error : 'Speech recognition error. Please try again.'
+        }));
         setIsListening(false);
+        if (autoListen) {
+          setTimeout(() => {
+            startMicrophoneListening();
+          }, 1000);
+        }
       }
     );
 
-    window.speechRecognition = recognition;
-    setIsListening(true);
+    if (recognition) {
+      recognitionRef.current = recognition;
+      setIsListening(true);
+    }
+  }, [autoListen, handleResponse]);
+
+  const stopMicrophoneListening = useCallback(() => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+    }
+    setIsListening(false);
+  }, []);
+
+  const toggleListening = useCallback(() => {
+    if (isListening) {
+      stopMicrophoneListening();
+    } else {
+      startMicrophoneListening();
+    }
+  }, [isListening, startMicrophoneListening, stopMicrophoneListening]);
+
+  const handleAutoListenToggle = useCallback(() => {
+    const newAutoListen = !autoListen;
+    setAutoListen(newAutoListen);
+    
+    if (newAutoListen && !isListening) {
+      startMicrophoneListening();
+    } else if (!newAutoListen && isListening) {
+      stopMicrophoneListening();
+    }
+  }, [autoListen, isListening, startMicrophoneListening, stopMicrophoneListening]);
+
+  const getNextObjection = async () => {
+    // Don't get next objection if we've completed the level
+    if (gameState.objectionsCompleted >= OBJECTIONS_PER_LEVEL) {
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/rebuttal-royale", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          currentScore: gameState.score,
+          getNext: true
+        })
+      });
+
+      const data = await response.json();
+      if (!data.success) throw new Error(data.message);
+
+      setGameState(prev => ({
+        ...prev,
+        currentObjection: data.content,
+        objectionType: data.objectionType,
+        level: data.level,
+        emotion: data.emotion,
+        emotionIntensity: data.intensity,
+        tips: data.tips
+      }));
+
+      // Speak the new objection if audio is enabled
+      if (isSpeaking) {
+        try {
+          const voice = voiceConfig.getRandomVoice();
+          await speakText(
+            cleanTextForSpeech(data.content),
+            process.env.NEXT_PUBLIC_ELEVENLABS_API_KEY || '',
+            voice.id,
+            voice.settings
+          );
+          startListeningForResponse();
+        } catch (error) {
+          console.error('Speech synthesis error:', error);
+        }
+      } else {
+        startListeningForResponse();
+      }
+    } catch (error) {
+      console.error("Failed to get next objection:", error);
+    }
   };
+
+  const handleLevelComplete = () => {
+    setShowSummary(true);
+    // Check for new badges
+    const earnedBadges = [];
+    if (!gameState.badges.pricemaster && gameState.level.id >= 2) {
+      earnedBadges.push('Price Master');
+    }
+    setNewBadges(earnedBadges);
+  };
+
+  const handleContinue = async () => {
+    setShowLevelComplete(false);
+    await startGame(); // This will start the next level
+  };
+
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+    };
+  }, []);
 
   return (
     <div className="relative">
@@ -218,7 +414,7 @@ export default function RebuttalRoyale() {
           <div className="flex items-center gap-2 md:gap-4">
             <div className="text-center">
               <p className="text-xs text-blue-300">LEVEL</p>
-              <p className="text-lg font-bold text-blue-200">{gameState.level}</p>
+              <p className="text-lg font-bold text-blue-200">{gameState.level?.id || 1}</p>
             </div>
             <div className="text-center">
               <p className="text-xs text-yellow-300">SCORE</p>
@@ -232,22 +428,33 @@ export default function RebuttalRoyale() {
                 </p>
               </div>
             )}
+            <div className="text-center">
+              <p className="text-xs text-blue-300">PROGRESS</p>
+              <p className="text-lg font-bold text-blue-200">
+                {gameState.objectionsCompleted}/{OBJECTIONS_PER_LEVEL}
+              </p>
+            </div>
           </div>
+          <ProgressBar
+            currentScore={gameState.score}
+            nextLevelScore={gameState.level.id * 100} // Adjust based on your level thresholds
+            previousLevelScore={(gameState.level.id - 1) * 100}
+          />
         </div>
 
         {/* Badges - Scrollable on Mobile */}
         <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
-          {badges.pricemaster && (
+          {gameState.badges.pricemaster && (
             <div className="bg-yellow-500/20 px-2 py-1 rounded-full text-xs text-yellow-300 flex items-center gap-1">
               <Star className="w-3 h-3" /> Price Master
             </div>
           )}
-          {badges.trustbuilder && (
+          {gameState.badges.trustbuilder && (
             <div className="bg-blue-500/20 px-2 py-1 rounded-full text-xs text-blue-300 flex items-center gap-1">
               <Shield className="w-3 h-3" /> Trust Builder
             </div>
           )}
-          {badges.closingchamp && (
+          {gameState.badges.closingchamp && (
             <div className="bg-green-500/20 px-2 py-1 rounded-full text-xs text-green-300 flex items-center gap-1">
               <Target className="w-3 h-3" /> Closing Champ
             </div>
@@ -283,15 +490,28 @@ export default function RebuttalRoyale() {
             {/* Controls */}
             <div className="flex gap-2">
               <Button
-                onClick={toggleListening}
-                disabled={isLoading}
+                onClick={handleAutoListenToggle}
                 variant="outline"
                 className={`border-blue-700 ${
-                  isListening ? "bg-orange-500" : "hover:bg-blue-800"
+                  autoListen ? "bg-green-500/20" : "hover:bg-blue-800"
                 }`}
+                title={autoListen ? "Auto-listen enabled" : "Auto-listen disabled"}
               >
-                <Mic className={`w-4 h-4 ${isListening ? "animate-pulse" : ""}`} />
+                <Mic className={`w-4 h-4 ${isListening ? "animate-pulse text-green-500" : ""}`} />
+                {autoListen ? "Auto" : "Manual"}
               </Button>
+              {!autoListen && (
+                <Button
+                  onClick={toggleListening}
+                  variant="outline"
+                  className={`border-blue-700 ${
+                    isListening ? "bg-green-500/20" : "hover:bg-blue-800"
+                  }`}
+                >
+                  <Mic className={`w-4 h-4 ${isListening ? "animate-pulse text-green-500" : ""}`} />
+                  {isListening ? "Listening..." : "Start"}
+                </Button>
+              )}
               <Button
                 onClick={() => setIsSpeaking(!isSpeaking)}
                 variant="outline"
@@ -315,10 +535,10 @@ export default function RebuttalRoyale() {
               </Button>
             </div>
 
-            {/* Feedback */}
-            {gameState.feedback && (
+            {/* Tips */}
+            {gameState.tips && (
               <div className="bg-blue-900/20 p-3 rounded border border-blue-800">
-                <p className="text-blue-200 text-sm">{gameState.feedback}</p>
+                <p className="text-blue-200 text-sm">{gameState.tips}</p>
               </div>
             )}
 
@@ -338,6 +558,24 @@ export default function RebuttalRoyale() {
           </div>
         )}
       </div>
+      {showLevelComplete && (
+        <LevelComplete
+          level={gameState.level}
+          score={gameState.score}
+          newBadges={newBadges}
+          onContinue={handleContinue}
+        />
+      )}
+      {showSummary && (
+        <LevelSummary
+          stats={gameState.levelStats}
+          onContinue={() => {
+            setShowSummary(false);
+            setShowLevelComplete(true);
+          }}
+        />
+      )}
     </div>
   );
 } 
+

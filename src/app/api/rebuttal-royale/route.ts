@@ -1,232 +1,159 @@
-import { NextResponse } from "next/server";
-import { config } from "@/lib/config";
-import { trainingConfig } from "@/config/training-config";
+import { NextRequest, NextResponse } from 'next/server';
+import { config, hasValidAnthropicKey } from '@/lib/config';
+import { GameStateManager } from '@/lib/game-state';
+import { OBJECTIONS, ObjectionType } from '@/config/objections';
+import { trainingConfig } from '@/config/training-config';
 
-interface Objection {
-  level: number;
-  scenarios: string[];
-  points: number;
-  tips: string;
+interface RequestBody {
+  currentScore?: number;
+  response?: string;
+  objectionType?: ObjectionType;
+  objectionsCompleted?: number;
 }
 
-type ObjectionType = {
-  [key: string]: Objection;
-}
+const OBJECTIONS_PER_LEVEL = 3;
+const PASSING_SCORE_PER_LEVEL = 200;
 
-const OBJECTIONS: ObjectionType = {
-  PRICE: {
-    level: 1,
-    scenarios: [
-      "That's way too expensive for me, I'm on a fixed income",
-      "I can't afford another bill right now",
-      "The other company offered me something cheaper",
-    ],
-    points: 100,
-    tips: "Focus on value over price, monthly payment flexibility, and protecting family"
-  },
-  SPOUSE: {
-    level: 2,
-    scenarios: [
-      "I need to talk to my spouse before making any decisions",
-      "My children handle all my financial decisions",
-      "Let me discuss this with my family first",
-    ],
-    points: 150,
-    tips: "Emphasize urgency, offer to include family in conversation, discuss rate increases"
-  },
-  TRUST: {
-    level: 3,
-    scenarios: [
-      "How do I know this isn't a scam?",
-      "I've heard bad things about insurance companies",
-      "I don't know if I can trust this...",
-    ],
-    points: 200,
-    tips: "Build credibility, mention state regulations, share company history"
-  },
-  EXISTING_COVERAGE: {
-    level: 4,
-    scenarios: [
-      "I already have life insurance through my old job",
-      "I have a small policy with AARP",
-      "Social Security will cover my funeral",
-    ],
-    points: 250,
-    tips: "Explain coverage gaps, discuss benefit amounts, highlight guaranteed acceptance"
-  },
-  PROCRASTINATION: {
-    level: 5,
-    scenarios: [
-      "I want to think about it",
-      "Call me back next month",
-      "I'm not ready to make a decision today",
-    ],
-    points: 300,
-    tips: "Create urgency, discuss rate increases, share stories of procrastination consequences"
-  },
-};
-
-// Add emotion types
-type Emotion = 'frustrated' | 'concerned' | 'skeptical' | 'interested' | 'resistant';
-
-interface AIResponse {
-  content: string;
-  emotion: Emotion;
-  intensity: number; // 0-1 scale
-}
-
-// Add proper type for trainingConfig
-interface ObjectionHandling {
-  approvedPhrases: string[];
-  forbiddenPhrases: string[];
-  requiredPoints: string[];
-  sampleRebuttals: string[];
-}
-
-interface TrainingConfig {
-  objectionHandling: {
-    [key in keyof typeof OBJECTIONS]: ObjectionHandling;
-  };
-}
-
-export async function POST(req: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const { level, currentScore, lastResponse } = await req.json();
-
-    const availableObjections = Object.entries(OBJECTIONS)
-      .filter(([, obj]) => obj.level <= level);
-    
-    const [objectionType, objectionData] = availableObjections[
-      Math.floor(Math.random() * availableObjections.length)
-    ];
-
-    const scenario = objectionData.scenarios[
-      Math.floor(Math.random() * objectionData.scenarios.length)
-    ];
-
-    // Update the analyzeRebuttal function
-    const analyzeRebuttal = (response: string, objectionType: keyof typeof OBJECTIONS) => {
-      const guidelines = trainingConfig.objectionHandling[objectionType] as ObjectionHandling;
-      let effectiveness = 0;
-
-      // Check for approved phrases
-      guidelines.approvedPhrases.forEach(phrase => {
-        if (response.toLowerCase().includes(phrase.toLowerCase())) {
-          effectiveness += 25;
-        }
-      });
-
-      // Check for forbidden phrases
-      guidelines.forbiddenPhrases.forEach(phrase => {
-        if (response.toLowerCase().includes(phrase.toLowerCase())) {
-          effectiveness -= 30;
-        }
-      });
-
-      // Check for required points
-      guidelines.requiredPoints.forEach(point => {
-        if (response.toLowerCase().includes(point.toLowerCase())) {
-          effectiveness += 20;
-        }
-      });
-
-      return Math.min(Math.max(effectiveness, 0), 100);
-    };
-
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": config.anthropic.apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-3-sonnet-20240229",
-        messages: [{ role: "user", content: lastResponse || "Start simulation" }],
-        system: `You are an elderly prospect (aged 50-85) concerned about final expense insurance.
-                Current objection: ${scenario}
-                Objection type: ${objectionType}
-                Level: ${level}
-
-                Speaking style:
-                - You are ALWAYS the prospect, never the agent
-                - Speak naturally as a senior citizen
-                - Use simple, clear sentences
-                - Express genuine emotions based on the agent's approach
-                - Never acknowledge this is a simulation
-                - Never say you're "playing a part"
-                
-                Response format:
-                {
-                  "content": "Your response as the prospect",
-                  "emotion": "frustrated|concerned|skeptical|interested|resistant",
-                  "intensity": 0.1-1.0
-                }
-                
-                Example response:
-                {
-                  "content": "I just don't know if I can afford another bill right now. My social security check only goes so far...",
-                  "emotion": "concerned",
-                  "intensity": 0.7
-                }
-                
-                Format your response as valid JSON.`,
-        max_tokens: 1024,
-        temperature: 0.7,
-      }),
-    });
-
-    const aiResponse = await response.json();
-    let parsedResponse: AIResponse;
-    
-    try {
-      parsedResponse = JSON.parse(aiResponse.content[0].text);
-    } catch (error) {
-      // Fallback if response isn't valid JSON
-      parsedResponse = {
-        content: aiResponse.content[0].text,
-        emotion: 'skeptical',
-        intensity: 0.5
-      };
-    }
-
-    // Calculate score and feedback
-    let newScore = currentScore || 0;
-    let feedback = "";
-    
-    if (lastResponse) {
-      const effectiveness = analyzeRebuttal(lastResponse, objectionType as keyof typeof OBJECTIONS);
-      const pointsEarned = Math.floor((effectiveness / 100) * objectionData.points);
-      newScore += pointsEarned;
-      
-      feedback = effectiveness > 70 
-        ? `Excellent rebuttal! You effectively addressed the ${objectionType.toLowerCase()} objection. Tip: ${objectionData.tips}` 
-        : effectiveness > 40 
-          ? `Good attempt. Remember to: ${objectionData.tips}`
-          : `Try a different approach. Key tip: ${objectionData.tips}`;
-    }
-
-    return NextResponse.json({
-      content: parsedResponse.content,
-      emotion: parsedResponse.emotion,
-      intensity: parsedResponse.intensity,
-      score: newScore,
-      level,
-      objectionType,
-      feedback,
-      nextMilestone: (Math.floor(newScore / 1000) + 1) * 1000,
-      badges: {
-        pricemaster: newScore > 1000,
-        trustbuilder: newScore > 2000,
-        closingchamp: newScore > 3000,
+    // Add debug logging
+    console.log('API Request received:', {
+      hasAnthropicKey: hasValidAnthropicKey(),
+      config: {
+        anthropicKey: config.anthropic.apiKey?.substring(0, 10),
+        hasKey: !!config.anthropic.apiKey
       }
     });
 
-  } catch (error: unknown) {
-    console.error("Rebuttal Royale error:", error);
+    if (!hasValidAnthropicKey()) {
+      console.error('Invalid Anthropic key configuration');
+      return NextResponse.json(
+        { success: false, message: 'Server configuration error' },
+        { status: 500 }
+      );
+    }
+
+    const body = await request.json() as RequestBody;
+    console.log('Request body:', body);
+
+    const gameState = new GameStateManager(body.currentScore || 0);
+    const state = gameState.getState();
+
+    // Handle response to objection
+    if (body.response && body.objectionType) {
+      const currentObjType = body.objectionType;
+      const training = trainingConfig.objectionHandling[currentObjType];
+      const response = body.response as string;  // Add type assertion
+      
+      let points = 0;
+      let feedback = '';
+
+      // Calculate points based on approved and key phrases
+      const usedApprovedPhrases = training.approvedPhrases.filter(phrase => 
+        response.toLowerCase().includes(phrase.toLowerCase())
+      );
+
+      const usedKeyPhrases = Object.entries(training.keyPhrases).filter(([phrase, _]) => 
+        response.toLowerCase().includes(phrase.toLowerCase())
+      );
+
+      // Award points
+      if (usedApprovedPhrases.length > 0) {
+        points += 50 * usedApprovedPhrases.length;
+      }
+
+      usedKeyPhrases.forEach(([_, value]) => {
+        points += value;
+      });
+
+      // Check forbidden phrases
+      if (training.forbiddenPhrases.some(phrase => 
+        response.toLowerCase().includes(phrase.toLowerCase())
+      )) {
+        points = Math.max(0, points - 50);
+        feedback = "Be careful with your phrasing. Try a more positive approach.";
+      } else if (points > 0) {
+        feedback = `Great job! You earned ${points} points. ${usedApprovedPhrases.length > 1 ? 'Excellent use of multiple key phrases!' : ''}`;
+      } else {
+        // Get first 2 key phrases from the object's keys
+        const suggestedPhrases = Object.keys(training.keyPhrases).slice(0, 2);
+        feedback = "Try incorporating some of the suggested phrases: " + 
+          suggestedPhrases.join(", ");
+      }
+
+      // Check if level is complete
+      const objectionsCompleted = (body.objectionsCompleted || 0) + 1;
+      const levelComplete = objectionsCompleted >= OBJECTIONS_PER_LEVEL;
+      const totalScore = (state.score || 0) + points;
+      const passedLevel = totalScore >= PASSING_SCORE_PER_LEVEL;
+
+      return NextResponse.json({
+        success: true,
+        points,
+        feedback,
+        levelComplete,
+        passedLevel,
+        totalScore
+      });
+    }
+
+    // Handle request for next objection
+    const objectionTypes = state.currentLevel.objectionTypes as ObjectionType[];
+    const usedObjections = state.objectionHistory || [];
+    
+    // Get unused objections first
+    const unusedTypes = objectionTypes.filter(type => !usedObjections.includes(type));
+    const objectionType = unusedTypes.length > 0 
+      ? unusedTypes[Math.floor(Math.random() * unusedTypes.length)]
+      : objectionTypes[Math.floor(Math.random() * objectionTypes.length)];
+
+    const scenarios = OBJECTIONS[objectionType].scenarios;
+    const scenario = scenarios[Math.floor(Math.random() * scenarios.length)];
+
+    const handleScenario = (scenario: any) => {
+      const response = Array.isArray(scenario.prospectResponse) 
+        ? scenario.prospectResponse[Math.floor(Math.random() * scenario.prospectResponse.length)]
+        : scenario.prospectResponse;
+
+      return {
+        success: true,
+        content: response,
+        nextPrompt: scenario.nextPrompt,
+        objectionType,
+        emotion: determineEmotion(state.currentLevel.id),
+        intensity: state.emotionalIntensity,
+        score: state.score,
+        level: state.currentLevel,
+        badges: state.badges,
+        tips: OBJECTIONS[objectionType].tips
+      };
+    };
+
+    return NextResponse.json(handleScenario(scenario));
+
+  } catch (error) {
+    // Improved error logging
+    console.error('API Error:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      type: error instanceof Error ? error.constructor.name : typeof error
+    });
+
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to process rebuttal" },
+      { 
+        success: false, 
+        message: error instanceof Error ? error.message : 'Internal server error'
+      },
       { status: 500 }
     );
+  }
+}
+
+function determineEmotion(level: number): string {
+  switch (level) {
+    case 1: return 'concerned';
+    case 2: return 'skeptical';
+    case 3: return 'frustrated';
+    default: return 'concerned';
   }
 } 

@@ -5,14 +5,14 @@ const openai = new OpenAI({
 });
 
 interface ChatMessage {
-  role: string;
+  role: 'system' | 'user' | 'assistant';  // Restrict role to valid values
   content: string;
 }
 
 export async function generateResponse(
   context: string,
   conversation: ChatMessage[]
-) {
+): Promise<string | null> {
   try {
     const completion = await openai.chat.completions.create({
       model: "gpt-4-turbo-preview",
@@ -23,7 +23,10 @@ export async function generateResponse(
           Context: ${context}
           Respond naturally and present realistic objections when appropriate.`,
         },
-        ...conversation,
+        ...conversation.map(msg => ({
+          role: msg.role,
+          content: msg.content
+        })),
       ],
     });
 

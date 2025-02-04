@@ -7,54 +7,54 @@ console.log("Environment check:", {
   envKeys: Object.keys(process.env),
 });
 
-interface Config {
+interface EnvironmentConfig {
   anthropic: {
     apiKey: string;
     baseUrl: string;
   };
   elevenlabs: {
-    apiKey: string;
-    baseUrl: string;
-  };
-  openai: {
     apiKey: string;
     baseUrl: string;
   };
 }
 
-export const config: Config = {
-  anthropic: {
-    apiKey: process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY || '',
-    baseUrl: process.env.ANTHROPIC_API_BASE_URL || 'https://api.anthropic.com',
-  },
-  elevenlabs: {
-    apiKey: process.env.NEXT_PUBLIC_ELEVENLABS_API_KEY || '',
-    baseUrl: process.env.ELEVENLABS_API_BASE_URL || 'https://api.elevenlabs.io',
-  },
-  openai: {
-    apiKey: process.env.OPENAI_API_KEY || '',
-    baseUrl: process.env.OPENAI_API_BASE_URL || 'https://api.openai.com',
-  },
+const getEnvironmentConfig = (): EnvironmentConfig => {
+  return {
+    anthropic: {
+      apiKey: process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY || '',
+      baseUrl: 'https://api.anthropic.com'
+    },
+    elevenlabs: {
+      apiKey: process.env.NEXT_PUBLIC_ELEVENLABS_API_KEY || '',
+      baseUrl: 'https://api.elevenlabs.io'
+    }
+  };
 };
 
-// Add debugging
-console.log("Config loaded:", {
-  hasAnthropicKey: !!config.anthropic.apiKey,
-  baseUrl: config.anthropic.baseUrl,
-  keyPrefix: config.anthropic.apiKey?.substring(0, 10),
-});
+export const config = getEnvironmentConfig();
 
-// Only validate on server
+// Helper function to check if Anthropic key is configured
+export const hasValidAnthropicKey = (): boolean => {
+  return Boolean(config.anthropic.apiKey && config.anthropic.apiKey.startsWith('sk-ant'));
+};
+
+// Debug logging only on server side
 if (isServer) {
-  const requiredEnvVars = [
-    'OPENAI_API_KEY',
-    'NEXT_PUBLIC_ANTHROPIC_API_KEY',
-    'NEXT_PUBLIC_ELEVENLABS_API_KEY'
-  ];
+  console.log("Server-side environment check:", {
+    hasAnthropicKey: hasValidAnthropicKey(),
+    baseUrl: config.anthropic.baseUrl
+  });
+}
 
-  for (const envVar of requiredEnvVars) {
-    if (!process.env[envVar]) {
-      throw new Error(`Missing required environment variable: ${envVar}`);
-    }
+// Simplified validation
+if (isServer) {
+  const missingVars = [];
+  
+  if (!process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY) {
+    missingVars.push('NEXT_PUBLIC_ANTHROPIC_API_KEY');
+  }
+  
+  if (missingVars.length > 0) {
+    console.error(`Missing required environment variables: ${missingVars.join(', ')}`);
   }
 } 
