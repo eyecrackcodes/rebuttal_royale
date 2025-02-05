@@ -1,51 +1,77 @@
-export interface ScoringCriteria {
-  tonality: {
-    weight: number;
-    keyPhrases: string[];
-    forbiddenPhrases: string[];
-  };
-  phrasing: {
-    weight: number;
-    keyPhrases: string[];
-    forbiddenPhrases: string[];
-  };
-  empathy: {
-    weight: number;
-    keyPhrases: string[];
-    forbiddenPhrases: string[];
-  };
-}
+export type Difficulty = "BEGINNER" | "INTERMEDIATE" | "ADVANCED";
+export type ModuleType = "INTAKE" | "ELIGIBILITY";
 
-export interface TrainingScenario {
-  agentScript: string;
-  expectedResponse: string;
-  prospectResponse: string | string[];
+export interface ScoringCriteria {
+  weight: number;
   keyPhrases: string[];
   forbiddenPhrases: string[];
-  scoringCriteria: ScoringCriteria;
-  nextPrompt?: string;
 }
 
-export interface TrainingModule {
-  id: string;
-  title: string;
-  description: string;
-  difficulty: 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED';
-  scenarios: TrainingScenario[];
-  requiredScore: number;
+export interface EmotionalContext {
+  mood: string;
+  intensity: string;
+  pacing: string;
+  naturalPauses: Array<{
+    after: string;
+    durationMs: number;
+  }>;
+  voiceModulation: {
+    baseline: string;
+    [key: string]: string;
+  };
+}
+
+export interface Scenario {
+  agentScript: string;
+  expectedResponse: string;
+  prospectResponse: string;
+  emotionalContext: EmotionalContext;
+  scoringCriteria: {
+    tonality: ScoringCriteria;
+    phrasing: ScoringCriteria;
+    empathy: ScoringCriteria;
+  };
+  keyPhrases: string[];
+  forbiddenPhrases: string[];
 }
 
 export interface TrainingSection {
   id: string;
   title: string;
   description: string;
-  icon: React.ReactNode;
-  modules: TrainingModule[];
+  type: ModuleType;
+  difficulty: Difficulty;
   requiredScore: number;
-  completionPhrases?: string[];
-  unlockCriteria?: {
-    sectionIds: string[];
-    minScore: number;
+  scenarios: Scenario[];
+  unlockCriteria: {
+    requiredModules: string[];
+    requiredScore: number;
+  };
+}
+
+export interface Module extends TrainingSection {
+  // Additional module-specific properties can go here
+}
+
+export type TrainingModule = Module;
+export type TrainingScenario = Scenario;
+
+export interface AISettings {
+  speechDetection: {
+    minSilenceBeforeResponse: number;
+    endOfUtteranceThreshold: number;
+    interruptionPrevention: boolean;
+    continuousSpeechDetection: boolean;
+  };
+  responseDelay: {
+    default: number;
+    afterEmotionalContent: number;
+    afterQuestion: number;
+  };
+  turnTaking: {
+    waitForCompleteStop: boolean;
+    detectUserResuming: boolean;
+    backoffOnOverlap: boolean;
   };
 }
 
@@ -64,4 +90,4 @@ export interface CallState {
   isComplete: boolean;
   feedback: string;
   isProspectSpeaking: boolean;
-} 
+}
