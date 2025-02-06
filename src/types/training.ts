@@ -1,5 +1,15 @@
 export type Difficulty = "BEGINNER" | "INTERMEDIATE" | "ADVANCED";
-export type ModuleType = "INTAKE" | "ELIGIBILITY";
+export type ModuleType =
+  | "INTAKE"
+  | "ELIGIBILITY"
+  | "SITUATION"
+  | "CREDIBILITY"
+  | "LUMINARY_INDEX"
+  | "UNDERWRITING"
+  | "EDUCATION"
+  | "RECAP"
+  | "COVERAGE"
+  | "CLOSING";
 
 export interface ScoringCriteria {
   weight: number;

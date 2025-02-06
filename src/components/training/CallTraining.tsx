@@ -25,6 +25,35 @@ import {
   CallState,
   ScoringCriteria,
 } from "@/types/training";
+import { intakeScenarios } from "@/data/scenarios/intake";
+import { eligibilityScenarios } from "@/data/scenarios/eligibility";
+import { situationScenarios } from "@/data/scenarios/situation";
+import { credibilityScenarios } from "@/data/scenarios/credibility";
+import { luminaryIndexScenarios } from "@/data/scenarios/luminaryIndex";
+import { underwritingScenarios } from "@/data/scenarios/underwriting";
+import { educationScenarios } from "@/data/scenarios/education";
+
+// Add console logs to check each import
+console.log("Intake:", intakeScenarios);
+console.log("Eligibility:", eligibilityScenarios);
+console.log("Situation:", situationScenarios);
+console.log("Credibility:", credibilityScenarios);
+console.log("LuminaryIndex:", luminaryIndexScenarios);
+console.log("Underwriting:", underwritingScenarios);
+console.log("Education:", educationScenarios);
+
+const trainingModules = [
+  ...intakeScenarios,
+  ...eligibilityScenarios,
+  ...situationScenarios,
+  ...credibilityScenarios,
+  ...luminaryIndexScenarios,
+  ...underwritingScenarios,
+  ...educationScenarios,
+];
+
+// Log the complete modules array
+console.log("All Training Modules:", trainingModules);
 
 interface ModuleCardProps {
   icon: React.ReactNode;
