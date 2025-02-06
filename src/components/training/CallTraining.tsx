@@ -32,6 +32,7 @@ import { credibilityScenarios } from "@/data/scenarios/credibility";
 import { luminaryIndexScenarios } from "@/data/scenarios/luminaryIndex";
 import { underwritingScenarios } from "@/data/scenarios/underwriting";
 import { educationScenarios } from "@/data/scenarios/education";
+import { calculateResponseScore, defaultPenalties } from "@/utils/scoring";
 
 // Add console logs to check each import
 console.log("Intake:", intakeScenarios);
@@ -214,42 +215,30 @@ export default function CallTraining() {
     response: string,
     scenario: TrainingScenario
   ): number => {
-    const scores = {
-      tonality: 0,
-      phrasing: 0,
-      empathy: 0,
-    };
-
-    const lowerResponse = response.toLowerCase();
-
-    Object.entries(scenario.scoringCriteria).forEach(([category, criteria]) => {
-      let categoryScore = 0;
-
-      criteria.keyPhrases.forEach((phrase: string) => {
-        if (lowerResponse.includes(phrase.toLowerCase())) {
-          categoryScore += 20;
-        }
-      });
-
-      criteria.forbiddenPhrases.forEach((phrase: string) => {
-        if (lowerResponse.includes(phrase.toLowerCase())) {
-          categoryScore -= 10;
-        }
-      });
-
-      scores[category as keyof typeof scores] =
-        Math.max(0, Math.min(100, categoryScore)) * (criteria.weight / 100);
-    });
-
-    return Math.round(
-      Object.values(scores).reduce((sum, score) => sum + score, 0)
+    const result = calculateResponseScore(
+      response,
+      scenario.scoringCriteria,
+      defaultPenalties
     );
+
+    // Update module progress with feedback
+    setModuleProgress((prev) => ({
+      ...prev,
+      areasToImprove: [...prev.areasToImprove, ...result.feedback],
+      missedOpportunities:
+        result.detailedScores.empathy < 50
+          ? [...prev.missedOpportunities, "Missed opportunity for empathy"]
+          : prev.missedOpportunities,
+    }));
+
+    return result.score;
   };
 
   const handleResponse = useCallback(
     async (response: string) => {
-      if (!currentScenario || !currentModule) return;
+      if (!currentScenario || !currentModule || !selectedModule) return;
 
+      console.log("Handling response:", response);
       setIsListening(false);
 
       const prospectResponse = getRandomResponse(
@@ -259,59 +248,112 @@ export default function CallTraining() {
 
       const score = scoreResponse(response, currentScenario);
 
-      setModuleProgress((prev) => ({
-        ...prev,
-        score: Math.max(prev.score, score),
-        totalResponses: prev.totalResponses + 1,
-        averageScore: Math.round(
-          (prev.averageScore * prev.totalResponses + score) /
-            (prev.totalResponses + 1)
-        ),
-        bestResponse: score > prev.score ? response : prev.bestResponse,
-      }));
+      // Update module progress
+      setModuleProgress((prev) => {
+        const newTotalResponses = prev.totalResponses + 1;
+        const newAverageScore = Math.round(
+          (prev.averageScore * prev.totalResponses + score) / newTotalResponses
+        );
 
+        return {
+          ...prev,
+          score: Math.max(prev.score, score),
+          totalResponses: newTotalResponses,
+          averageScore: newAverageScore,
+          bestResponse: score > prev.score ? response : prev.bestResponse,
+        };
+      });
+
+      // Update section progress
+      setSectionProgress((prev) => {
+        const section = TRAINING_SECTIONS.find((s) => s.id === selectedModule);
+        if (!section) return prev;
+
+        return {
+          ...prev,
+          [section.id]: {
+            ...prev[section.id],
+            score: Math.max(prev[section.id]?.score || 0, score),
+            completed: true,
+            moduleScores: {
+              ...prev[section.id]?.moduleScores,
+              [currentModule.id]: score,
+            },
+          },
+        };
+      });
+
+      // Speak the prospect's response if speech is enabled
       if (isSpeaking) {
-        setCallState((prev) => ({ ...prev, isProspectSpeaking: true }));
         try {
-          await speakText(
-            prospectResponse,
-            process.env.NEXT_PUBLIC_ELEVENLABS_API_KEY || "",
-            sessionVoice.id,
-            sessionVoice.settings
-          );
-          setCallState((prev) => ({ ...prev, isProspectSpeaking: false }));
+          await speakText(prospectResponse);
         } catch (error) {
-          console.error("Speech synthesis error:", error);
-          setCallState((prev) => ({ ...prev, isProspectSpeaking: false }));
+          console.error("Error speaking text:", error);
         }
       }
 
-      // Move to next step
       const nextStep = callState.currentStep + 1;
-      const isComplete = nextStep >= currentModule.scenarios.length;
+      const isComplete = nextStep >= (currentModule.scenarios?.length || 0);
 
-      setCallState((prev) => ({
-        ...prev,
+      setCallState({
+        ...callState,
         currentStep: nextStep,
         isComplete,
+        isProspectSpeaking: !isComplete,
         feedback: isComplete
           ? "Great job completing the module!"
           : "Good response, waiting for prospect...",
-      }));
+      });
+
+      // Save progress to localStorage
+      try {
+        const userId = "user123"; // Replace with actual user ID when available
+        const progressData = {
+          id: selectedModule,
+          score,
+          attempts: 1,
+          lastAttempted: new Date(),
+          completed: isComplete,
+        };
+
+        const existingProgress = localStorage.getItem(`progress_${userId}`);
+        const progress = existingProgress ? JSON.parse(existingProgress) : [];
+
+        const moduleIndex = progress.findIndex(
+          (p: any) => p.id === selectedModule
+        );
+        if (moduleIndex >= 0) {
+          progress[moduleIndex] = {
+            ...progress[moduleIndex],
+            score: Math.max(progress[moduleIndex].score, score),
+            attempts: progress[moduleIndex].attempts + 1,
+            lastAttempted: new Date(),
+            completed: isComplete,
+          };
+        } else {
+          progress.push(progressData);
+        }
+
+        localStorage.setItem(`progress_${userId}`, JSON.stringify(progress));
+      } catch (error) {
+        console.error("Error saving progress:", error);
+      }
 
       if (isComplete) {
         setShowSummary(true);
       } else {
         await new Promise((resolve) => setTimeout(resolve, 1000));
         setCurrentScenario(currentModule.scenarios[nextStep]);
+        setIsListening(true);
       }
     },
     [
       currentScenario,
       currentModule,
-      callState.currentStep,
+      selectedModule,
+      callState,
       isSpeaking,
-      sessionVoice,
+      moduleProgress.areasToImprove,
     ]
   );
 
