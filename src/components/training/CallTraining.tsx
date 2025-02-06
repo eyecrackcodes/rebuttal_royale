@@ -168,15 +168,28 @@ export default function CallTraining() {
     useState<string>("");
 
   const handleModuleSelect = (moduleId: string) => {
-    const section = TRAINING_SECTIONS.find((s) =>
-      s.modules.some((m) => m.id === moduleId)
-    );
-    const module = section?.modules.find((m) => m.id === moduleId);
+    console.log("handleModuleSelect called with moduleId:", moduleId);
 
-    if (module && module.scenarios && module.scenarios.length > 0) {
+    const section = TRAINING_SECTIONS.find((s) => s.id === moduleId);
+    console.log("Found section:", section);
+
+    if (!section) {
+      console.warn("No section found for moduleId:", moduleId);
+      return;
+    }
+
+    // Get the beginner module first (it's the first in the array)
+    const firstModule = section.modules[0];
+    console.log("Selected module:", firstModule);
+
+    if (
+      firstModule &&
+      firstModule.scenarios &&
+      firstModule.scenarios.length > 0
+    ) {
       setSelectedModule(moduleId);
-      setCurrentModule(module);
-      setCurrentScenario(module.scenarios[0]);
+      setCurrentModule(firstModule);
+      setCurrentScenario(firstModule.scenarios[0]);
       setCallState({
         currentStep: 0,
         isComplete: false,
@@ -192,6 +205,8 @@ export default function CallTraining() {
         missedOpportunities: [],
         areasToImprove: [],
       });
+    } else {
+      console.warn("No scenarios found in module:", firstModule);
     }
   };
 
@@ -332,14 +347,26 @@ export default function CallTraining() {
     id: string,
     completedModules: string[]
   ): boolean => {
-    const module = TRAINING_SECTIONS.find((s) =>
-      s.modules.some((m) => m.id === id)
-    );
-    if (!module?.unlockCriteria) return true;
+    // First check if the section exists
+    const section = TRAINING_SECTIONS.find((s) => s.id === id);
+    if (!section) {
+      console.warn(`Section with id ${id} not found`);
+      return false;
+    }
 
-    return module.unlockCriteria.requiredModules.every((reqId) =>
+    // If no unlock criteria, the section is available
+    if (!section.unlockCriteria) return true;
+
+    // Check if required modules are completed
+    return section.unlockCriteria.requiredModules.every((reqId) =>
       completedModules.includes(reqId)
     );
+  };
+
+  // Update the section title lookup as well
+  const getSectionTitle = (moduleId: string): string => {
+    const section = TRAINING_SECTIONS.find((s) => s.id === moduleId);
+    return section?.title || "Unknown Section";
   };
 
   return (
@@ -372,7 +399,7 @@ export default function CallTraining() {
                 onModuleSelect={(moduleId) => {
                   if (
                     section.unlockCriteria &&
-                    !isModuleUnlocked(moduleId, Object.keys(sectionProgress))
+                    !isModuleUnlocked(section.id, Object.keys(sectionProgress))
                   ) {
                     return;
                   }
@@ -388,11 +415,7 @@ export default function CallTraining() {
             <div className="flex items-center gap-3">
               <Phone className="w-6 h-6 text-green-400" />
               <h2 className="text-2xl font-bold text-white">
-                {
-                  TRAINING_SECTIONS.find((s) =>
-                    s.modules.some((m) => m.id === selectedModule)
-                  )?.title
-                }
+                {getSectionTitle(selectedModule)}
               </h2>
             </div>
             <Button

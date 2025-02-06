@@ -12,4 +12,4 @@ export const config = {
     "/training/:path*",
     "/profile/:path*",
   ],
-}; 
+};

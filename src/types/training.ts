@@ -46,6 +46,7 @@ export interface Scenario {
 }
 
 export interface TrainingSection {
+  modules: any;
   id: string;
   title: string;
   description: string;

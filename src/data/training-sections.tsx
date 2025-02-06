@@ -27,20 +27,21 @@ import { ModuleCard } from "@/components/training/ModuleCard";
 import { ProgressOverview } from "@/components/training/ProgressOverview";
 import { ModuleProgress } from "@/types/progress";
 import { useState, useEffect } from "react";
+import { useSession } from "next-auth/react";
 
 export const TRAINING_SECTIONS: TrainingSection[] = [
   {
     id: "intake",
     title: "Initial Contact",
-    description:
-      "Master the complete intake process following the exact script",
+    description: "Learn the basics of the intake process",
     icon: <Phone className="w-6 h-6" />,
-    modules: intakeScenarios,
+    difficulty: "BEGINNER" as const,
     requiredScore: 70,
+    modules: intakeScenarios,
     completionPhrases: [
-      "Here's what we'll do over the next few minutes",
-      "Let me walk you through what happens next",
-      "Let me explain how we'll proceed",
+      "Let's begin the intake process",
+      "How can I help you today?",
+      "Welcome to Luminary",
     ],
   },
   {
@@ -185,47 +186,131 @@ export const TRAINING_SECTIONS: TrainingSection[] = [
 ];
 
 export function TrainingSections() {
-  // In a real app, this would come from your backend/database
+  const { data: session } = useSession();
   const [userProgress, setUserProgress] = useState<ModuleProgress[]>(() => {
     // Initialize with all modules, uncompleted
     return TRAINING_SECTIONS.map((section) => ({
       id: section.id,
       moduleType: section.id.split("-")[0].toUpperCase() as any,
-      difficulty: (section.id.split("-")[1] || "BEGINNER").toUpperCase() as
-        | "BEGINNER"
-        | "INTERMEDIATE"
-        | "ADVANCED",
+      difficulty: section.difficulty,
       completed: false,
       score: 0,
       attempts: 0,
     }));
   });
 
+  // Load saved progress when user logs in
+  useEffect(() => {
+    if (session?.user?.email) {
+      const savedProgress = localStorage.getItem(
+        `progress_${session.user.email}`
+      );
+      if (savedProgress) {
+        setUserProgress(JSON.parse(savedProgress));
+      }
+    }
+  }, [session]);
+
+  // Calculate unlocked levels
+  const unlockedLevels = {
+    BEGINNER: true, // Always unlocked
+    INTERMEDIATE: userProgress
+      .filter((m) => m.difficulty === "BEGINNER")
+      .every((m) => m.completed && m.score >= 70),
+    ADVANCED: userProgress
+      .filter((m) => m.difficulty === "INTERMEDIATE")
+      .every((m) => m.completed && m.score >= 75),
+  };
+
+  // Handle module completion
+  const handleModuleComplete = (moduleId: string, score: number) => {
+    const updatedProgress = userProgress.map((module) => {
+      if (module.id === moduleId) {
+        return {
+          ...module,
+          score: Math.max(module.score, score), // Keep highest score
+          completed: score >= (module.difficulty === "BEGINNER" ? 70 : 75),
+          attempts: module.attempts + 1,
+          lastAttempted: new Date(),
+        };
+      }
+      return module;
+    });
+
+    setUserProgress(updatedProgress);
+
+    // Save progress
+    if (session?.user?.email) {
+      localStorage.setItem(
+        `progress_${session.user.email}`,
+        JSON.stringify(updatedProgress)
+      );
+    }
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
+      {/* Level Overview */}
+      <div className="mb-8">
+        <h2 className="text-2xl font-bold text-white mb-4">Training Modules</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="p-4 rounded-lg bg-blue-900/50">
+            <h3 className="text-lg font-semibold">Beginner Level</h3>
+            <p className="text-sm text-blue-300">Available to all users</p>
+          </div>
+          <div
+            className={`p-4 rounded-lg ${
+              unlockedLevels.INTERMEDIATE ? "bg-blue-900/50" : "bg-blue-900/20"
+            }`}
+          >
+            <h3 className="text-lg font-semibold">Intermediate Level</h3>
+            <p className="text-sm text-blue-300">
+              {unlockedLevels.INTERMEDIATE
+                ? "Unlocked! Keep going!"
+                : "Complete all beginner modules first"}
+            </p>
+          </div>
+          <div
+            className={`p-4 rounded-lg ${
+              unlockedLevels.ADVANCED ? "bg-blue-900/50" : "bg-blue-900/20"
+            }`}
+          >
+            <h3 className="text-lg font-semibold">Advanced Level</h3>
+            <p className="text-sm text-blue-300">
+              {unlockedLevels.ADVANCED
+                ? "Unlocked! Master level!"
+                : "Complete all intermediate modules first"}
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Progress Overview */}
       <div className="mb-8">
         <ProgressOverview progress={userProgress} />
       </div>
 
-      {/* Training Sections */}
+      {/* Training Modules */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {TRAINING_SECTIONS.map((section) => (
-          <ModuleCard
-            key={section.id}
-            moduleId={section.id}
-            title={section.title}
-            description={section.description}
-            difficulty={
-              section.id.includes("advanced")
-                ? "ADVANCED"
-                : section.id.includes("intermediate")
-                ? "INTERMEDIATE"
-                : "BEGINNER"
-            }
-            userProgress={userProgress}
-          />
-        ))}
+        {TRAINING_SECTIONS.map((section) => {
+          const isLocked =
+            (section.difficulty === "INTERMEDIATE" &&
+              !unlockedLevels.INTERMEDIATE) ||
+            (section.difficulty === "ADVANCED" && !unlockedLevels.ADVANCED);
+
+          return (
+            <ModuleCard
+              key={section.id}
+              moduleId={section.id}
+              title={section.title}
+              description={section.description}
+              difficulty={section.difficulty}
+              userProgress={userProgress}
+              isLocked={isLocked}
+              onComplete={handleModuleComplete}
+            />
+          );
+        })}
       </div>
     </div>
   );

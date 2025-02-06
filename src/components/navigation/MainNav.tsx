@@ -1,44 +1,44 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { motion } from 'framer-motion';
-import { UserMenu } from './UserMenu';
-import { 
-  Home, 
-  GraduationCap, 
-  Trophy, 
-  Settings, 
-  Menu, 
+import { useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { motion } from "framer-motion";
+import { UserMenu } from "./UserMenu";
+import {
+  Home,
+  GraduationCap,
+  Trophy,
+  Settings,
+  Menu,
   X,
-  Brain
-} from 'lucide-react';
+  Brain,
+} from "lucide-react";
 
 const navItems = [
   {
-    path: '/',
-    name: 'Home',
+    path: "/",
+    name: "Home",
     icon: <Home className="w-5 h-5" />,
   },
   {
-    path: '/training',
-    name: 'Training',
+    path: "/training",
+    name: "Training",
     icon: <GraduationCap className="w-5 h-5" />,
   },
   {
-    path: '/rebuttal-royale',
-    name: 'Rebuttal Royale',
+    path: "/rebuttal-royale",
+    name: "Rebuttal Royale",
     icon: <Brain className="w-5 h-5" />,
   },
   {
-    path: '/leaderboard',
-    name: 'Leaderboard',
+    path: "/leaderboard",
+    name: "Leaderboard",
     icon: <Trophy className="w-5 h-5" />,
   },
   {
-    path: '/settings',
-    name: 'Settings',
+    path: "/settings",
+    name: "Settings",
     icon: <Settings className="w-5 h-5" />,
   },
 ];
@@ -69,8 +69,8 @@ export function MainNav() {
                   href={item.path}
                   className={`relative px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                     isActive
-                      ? 'text-white'
-                      : 'text-blue-300 hover:text-white hover:bg-blue-900/50'
+                      ? "text-white"
+                      : "text-blue-300 hover:text-white hover:bg-blue-900/50"
                   }`}
                 >
                   <div className="flex items-center space-x-2">
@@ -124,8 +124,8 @@ export function MainNav() {
                   href={item.path}
                   className={`block px-3 py-2 rounded-md text-base font-medium ${
                     isActive
-                      ? 'text-white bg-blue-900/50'
-                      : 'text-blue-300 hover:text-white hover:bg-blue-900/50'
+                      ? "text-white bg-blue-900/50"
+                      : "text-blue-300 hover:text-white hover:bg-blue-900/50"
                   }`}
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
@@ -146,4 +146,4 @@ export function MainNav() {
       )}
     </nav>
   );
-} 
+}

@@ -10,11 +10,8 @@ interface SectionProgressProps {
     title: string;
     description: string;
     icon: React.ReactNode;
-    modules: Array<{
-      id: string;
-      title: string;
-      difficulty: string;
-    }>;
+    difficulty: "BEGINNER" | "INTERMEDIATE" | "ADVANCED";
+    requiredScore: number;
   };
   progress: {
     completed: boolean;
@@ -22,20 +19,25 @@ interface SectionProgressProps {
     moduleScores: Record<string, number>;
   };
   isLocked?: boolean;
+  isAdvancedUnlocked?: boolean;
   onModuleSelect: (moduleId: string) => void;
 }
 
-export function SectionProgress({ section, progress, isLocked, onModuleSelect }: SectionProgressProps) {
+export function SectionProgress({
+  section,
+  progress,
+  isLocked,
+  isAdvancedUnlocked,
+  onModuleSelect,
+}: SectionProgressProps) {
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       className="bg-blue-900/30 p-4 rounded-lg border border-blue-700"
     >
       <div className="flex items-center gap-3 mb-4">
-        <div className="text-orange-400">
-          {section.icon}
-        </div>
+        <div className="text-orange-400">{section.icon}</div>
         <div>
           <h3 className="text-lg font-semibold text-white">{section.title}</h3>
           <p className="text-sm text-blue-200">{section.description}</p>
@@ -48,50 +50,53 @@ export function SectionProgress({ section, progress, isLocked, onModuleSelect }:
       </div>
 
       <div className="space-y-2">
-        {section.modules.map((module) => (
-          <div 
-            key={module.id}
-            className="flex items-center justify-between bg-blue-950/50 p-3 rounded"
-          >
-            <div className="flex items-center gap-2">
-              {progress.moduleScores[module.id] ? (
-                <Check className="w-4 h-4 text-green-400" />
-              ) : (
-                <div className="w-4 h-4" />
-              )}
-              <span className="text-blue-100">{module.title}</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className={`text-xs ${
-                module.difficulty === 'BEGINNER' ? 'text-green-400' :
-                module.difficulty === 'INTERMEDIATE' ? 'text-yellow-400' :
-                'text-red-400'
-              }`}>
-                {module.difficulty}
-              </span>
-              {isLocked ? (
-                <Lock className="w-4 h-4 text-gray-500" />
-              ) : (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => onModuleSelect(module.id)}
-                  className="text-blue-200 hover:text-blue-100"
-                >
-                  Start
-                </Button>
-              )}
-            </div>
+        <div className="flex items-center justify-between bg-blue-950/50 p-3 rounded">
+          <div className="flex items-center gap-2">
+            {progress.score > 0 ? (
+              <Check className="w-4 h-4 text-green-400" />
+            ) : (
+              <div className="w-4 h-4" />
+            )}
+            <span className="text-blue-100">Score: {progress.score}%</span>
           </div>
-        ))}
+          <div className="flex items-center gap-3">
+            <span
+              className={`text-xs ${
+                !isAdvancedUnlocked || section.difficulty === "BEGINNER"
+                  ? "text-green-400"
+                  : section.difficulty === "INTERMEDIATE"
+                  ? "text-yellow-400"
+                  : "text-red-400"
+              }`}
+            >
+              {!isAdvancedUnlocked ? "BEGINNER" : section.difficulty}
+            </span>
+            {isLocked ? (
+              <Lock className="w-4 h-4 text-gray-500" />
+            ) : (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => onModuleSelect(section.id)}
+                className="text-blue-200 hover:text-blue-100"
+              >
+                Start
+              </Button>
+            )}
+          </div>
+        </div>
       </div>
 
       {progress.completed && (
         <div className="mt-4 flex justify-between items-center text-sm">
-          <span className="text-blue-200">Section Score</span>
-          <span className="text-yellow-400 font-semibold">{progress.score}</span>
+          <span className="text-blue-200">
+            Required Score: {section.requiredScore}%
+          </span>
+          <span className="text-yellow-400 font-semibold">
+            {progress.score}%
+          </span>
         </div>
       )}
     </motion.div>
   );
-} 
+}
